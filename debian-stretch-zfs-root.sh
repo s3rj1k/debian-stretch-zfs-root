@@ -255,4 +255,4 @@ chroot /target /usr/sbin/dpkg-reconfigure tzdata
 
 sync
 
-zfs umount -a
+umount -l /target
