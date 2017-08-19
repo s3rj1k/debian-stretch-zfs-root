@@ -17,7 +17,7 @@ Installs Debian GNU/Linux 9 Stretch to a native ZFS root filesystem using a [Deb
 
 * grub (v2.02, included in Debian 9), especially `grub-probe`, [does not support](https://github.com/zfsonlinux/grub/issues/19) [all ZFS features](http://savannah.gnu.org/bugs/?42861) and subsequently [refuses to install](https://bugs.launchpad.net/ubuntu/+source/grub2/+bug/1451476). This script disables `feature@hole_birth` and `feature@embedded_data` (and you _must_ _not_ enable those features after installation).
 * Some mountpoints, notably `/var`, need to be mounted via fstab as the ZFS mount script runs too late during boot.
-* No EFI support at all
+* No EFI support at all.
 
 ## Bugs
 
