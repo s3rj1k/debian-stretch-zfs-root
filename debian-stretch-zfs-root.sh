@@ -1,15 +1,11 @@
 #!/bin/bash -e
 #
-# debian-stretch-zfs-root.sh V1.00
+# debian-stretch-zfs-root.sh V1.01
 #
-# Install Debian GNU/Linux 9 Stretch to a native ZFS root filesystem
+# Install Debian GNU/Linux 9 Stretch to a native ZFS root filesystem without EFI support
 #
 # (C) 2017 Hajo Noerenberg
-#
-#
-# http://www.noerenberg.de/
-# https://github.com/hn/debian-stretch-zfs-root
-#
+# (C) 2017 s3rj1k
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3.0 as
@@ -30,15 +26,13 @@ ZPOOL=tank
 TARGETDIST=stretch
 
 PARTBIOS=1
-PARTEFI=2
-PARTZFS=3
+PARTZFS=2
 
 SIZESWAP=2G
-SIZETMP=3G
-SIZEVARTMP=3G
+SIZETMP=8G
+SIZEVARTMP=8G
 
 GRUBPKG=grub-pc
-#GRUBPKG=grub-efi-amd64 # INCOMPLETE NOT TESTED
 
 ### User settings
 
@@ -67,11 +61,9 @@ while read -r DISK; do
 	if [ -z "${BYID[$DISK]}" ]; then
 		DISKS+=("/dev/$DISK")
 		ZFSPARTITIONS+=("/dev/$DISK$PARTZFS")
-		EFIPARTITIONS+=("/dev/$DISK$PARTEFI")
 	else
 		DISKS+=("${BYID[$DISK]}")
 		ZFSPARTITIONS+=("${BYID[$DISK]}-part$PARTZFS")
-		EFIPARTITIONS+=("${BYID[$DISK]}-part$PARTEFI")
 	fi
 done < "$TMPFILE"
 
@@ -132,12 +124,6 @@ fi
 
 DEBRELEASE=$(head -n1 /etc/debian_version)
 case $DEBRELEASE in
-	8*)
-		echo "deb http://http.debian.net/debian/ jessie-backports main contrib non-free" >/etc/apt/sources.list.d/jessie-backports.list
-		test -f /var/lib/apt/lists/http.debian.net_debian_dists_jessie-backports_InRelease || apt-get update
-		if [ ! -d /usr/share/doc/zfs-dkms ]; then NEED_PACKAGES+=(zfs-dkms/jessie-backports); fi
-		;;
-
 	9*)
 		echo "deb http://deb.debian.org/debian/ stretch contrib non-free" >/etc/apt/sources.list.d/contrib-non-free.list
 		test -f /var/lib/apt/lists/deb.debian.org_debian_dists_stretch_non-free_binary-amd64_Packages || apt-get update
@@ -168,7 +154,6 @@ for DISK in "${DISKS[@]}"; do
 	sgdisk --zap-all $DISK
 
 	sgdisk -a1 -n$PARTBIOS:34:2047   -t$PARTBIOS:EF02 \
-	           -n$PARTEFI:2048:+512M -t$PARTEFI:EF00 \
                    -n$PARTZFS:0:0        -t$PARTZFS:BF01 $DISK
 done
 
@@ -217,22 +202,7 @@ mkswap -f /dev/zvol/$ZPOOL/swap
 zpool status
 zfs list
 
-# "This is arguably a mis-design in the UEFI specification - the ESP is a single point of failure on one disk."
-# https://wiki.debian.org/UEFI#RAID_for_the_EFI_System_Partition
-I=0
-for EFIPARTITION in "${EFIPARTITIONS[@]}"; do
-	mkdosfs -F 32 -n EFI-$I $EFIPARTITION
-	if [ $I -eq 0 ]; then
-		mkdir -pv /target/boot/efi
-		mount $EFIPARTITION /target/boot/efi
-	else
-		mkdir -pv /mnt/efi-$I
-		mount $EFIPARTITION /mnt/efi-$I
-	fi
-	((I++)) || true
-done
-
-debootstrap --include=openssh-server,locales,joe,rsync,sharutils,psmisc,htop,patch,less $TARGETDIST /target http://deb.debian.org/debian/
+debootstrap --include=openssh-server,locales,nano,rsync,sharutils,psmisc,htop,patch,less $TARGETDIST /target http://deb.debian.org/debian/
 
 NEWHOST=debian-$(hostid)
 echo "$NEWHOST" >/target/etc/hostname
@@ -267,26 +237,8 @@ perl -i -pe 's/main$/main contrib non-free/' /target/etc/apt/sources.list
 chroot /target /usr/bin/apt-get update
 
 chroot /target /usr/bin/apt-get install --yes linux-image-amd64 grub2-common $GRUBPKG zfs-initramfs zfs-dkms
-grep -q zfs /target/etc/default/grub || perl -i -pe 's/quiet/boot=zfs quiet/' /target/etc/default/grub 
+grep -q zfs /target/etc/default/grub || perl -i -pe 's/quiet/boot=zfs quiet/' /target/etc/default/grub
 chroot /target /usr/sbin/update-grub
-
-if [ "${GRUBPKG:0:8}" == "grub-efi" ]; then
-	chroot /target /usr/sbin/grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=debian --recheck --no-floppy
-else
-	EFIFSTAB="#"
-fi
-
-I=0
-for EFIPARTITION in "${EFIPARTITIONS[@]}"; do
-	if [ $I -gt 0 ]; then
-		rsync -avx /target/boot/efi/ /mnt/efi-$I/
-		umount /mnt/efi-$I
-		EFIBAKPART="#"
-	fi
-	echo "${EFIFSTAB}${EFIBAKPART}PARTUUID=$(blkid -s PARTUUID -o value $EFIPARTITION) /boot/efi vfat defaults 0 1" >> /target/etc/fstab
-	((I++)) || true
-done
-umount /target/boot/efi
 
 if [ -d /proc/acpi ]; then
 	chroot /target /usr/bin/apt-get install --yes acpi acpid
@@ -303,8 +255,4 @@ chroot /target /usr/sbin/dpkg-reconfigure tzdata
 
 sync
 
-#zfs umount -a
-
-## chroot /target /bin/bash --login
-## zpool import -R /target tank
-
+zfs umount -a
