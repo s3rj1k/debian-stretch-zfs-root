@@ -153,7 +153,7 @@ for DISK in "${DISKS[@]}"; do
 
 	sgdisk --zap-all $DISK
 
-	sgdisk -a1 -n$PARTBIOS:34:2047   -t$PARTBIOS:EF02 \
+	sgdisk -a1 -n$PARTBIOS:1024:3072   -t$PARTBIOS:EF02 \
                    -n$PARTZFS:0:0        -t$PARTZFS:BF01 $DISK
 done
 
