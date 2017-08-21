@@ -256,6 +256,10 @@ chroot /target /usr/sbin/dpkg-reconfigure tzdata
 # fix zfs-service
 chroot /target ln -s /bin/rm /usr/bin/rm
 
+# fix locales
+echo -e "export LANG=en_US.UTF8\nexport LC_ALL=en_US.UTF-8" >> /target/etc/profile.d/locales.sh
+chmod +x /target/etc/profile.d/locales.sh
+
 sync
 
 umount -l /target
